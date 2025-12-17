@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any, Union
-from litellm import completion
+from openai import OpenAI
+import os
 
 class LLMUserSimulationEnv(object):
     def __init__(self, model: str, provider: str) -> None:
@@ -8,16 +9,27 @@ class LLMUserSimulationEnv(object):
         self.model = model
         self.provider = provider
         self.total_cost = 0.0
+        
+        # Initialize OpenAI client for Google Gemini via OpenAI API
+        self.client = OpenAI(
+            api_key=os.environ.get("GOOGLE_API_KEY"),
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        
         self.reset()
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
-        res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+        res = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
         )
         message = res.choices[0].message
-        self.messages.append(message.model_dump())
-        self.total_cost = res._hidden_params["response_cost"]
-        return message.content
+        self.messages.append({
+            "role": message.role,
+            "content": message.content or ""
+        })
+        self.total_cost = 0  # Google Gemini API via OpenAI doesn't provide cost
+        return message.content or ""
 
     def build_system_prompt(self, instruction: Optional[str], persona: Optional[str]) -> str:
         persona = persona if persona is not None else ""

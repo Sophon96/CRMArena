@@ -1729,10 +1729,10 @@ search_knowledge_articles.__info__ = {
             "properties": {
                 "search_term": {
                     "type": "string",
-                    "description": "A list of keywords to search for in knowledge articles.",
+                    "description": "The term to search for in knowledge articles.",
                 }
             },
-            "required": ["keywords"],
+            "required": ["search_term"],
         },
         "returns": {
             "type": "array",

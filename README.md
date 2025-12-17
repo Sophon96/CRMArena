@@ -87,11 +87,12 @@ First, create a `.env` file by copying from `.env.example` which already contain
 cp .env.example .env
 ```
 
-Then, store your Salesforce org / OpenAI / AWS Bedrock / TogetherAI API keys in `.env`
+Then, store your Salesforce org and Google Gemini API keys in `.env`:
 ```bash
-OPENAI_API_KEY=...
-...
+GOOGLE_API_KEY=...  # Your Google AI API key for Gemini models
 ```
+
+**Note**: This repository now uses the OpenAI SDK to interface with Google Gemini 2.5 Flash Lite via the OpenAI-compatible API endpoint. All agent tasks are executed using Google Gemini 2.5 Flash Lite as the default model.
 
 After that, you can use Simple Salesforce to connect to our Org.
 
@@ -125,10 +126,12 @@ For more details on data loading and structure, please refer to `crm_sandbox/dat
 
 We have prepared evaluation scripts to simplify the process of running experiments.
 
+**Important**: All experiments now use **Google Gemini 2.5 Flash Lite** as the agent model, accessed via the OpenAI SDK.
+
 ### Running CRMArena Experiments
 
 To run experiments for the original CRMArena:
-1. Configure your desired settings (agent models, tasks, strategies, etc.) in `run_tasks_crmarena.sh`.
+1. Configure your desired settings (tasks, strategies, etc.) in `run_tasks_crmarena.sh`.
 2. Launch the experiments using the following command:
 
 ```bash
@@ -138,7 +141,7 @@ bash run_tasks_crmarena.sh
 ### Running CRMArena-Pro Experiments
 
 To run experiments for CRMArena-Pro:
-1. Configure your desired settings (agent models, tasks, strategies, interactive mode, org type, etc.) in `run_tasks_crmarena_pro.sh`.
+1. Configure your desired settings (tasks, strategies, interactive mode, org type, etc.) in `run_tasks_crmarena_pro.sh`.
 2. Launch the experiments using the following command:
 
 ```bash

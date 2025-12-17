@@ -1,7 +1,6 @@
 from dotenv import load_dotenv
 import json, os
 from crm_sandbox.agents import ChatAgent, ToolCallAgent
-from crm_sandbox.agents.utils import BEDROCK_MODELS_MAP, TOGETHER_MODELS_MAP, VERTEX_MODELS_MAP
 from crm_sandbox.data.assets import TASKS_ORIGINAL, SCHEMA_ORIGINAL, TASKS_B2B, TASKS_B2B_INTERACTIVE, TASKS_B2C, TASKS_B2C_INTERACTIVE, B2B_SCHEMA, B2C_SCHEMA, EXTERNAL_FACING_TASKS
 from crm_sandbox.env.env import ChatEnv, ToolEnv, InteractiveChatEnv
 from crm_sandbox.env import TOOLS, TOOLS_FULL
@@ -9,6 +8,9 @@ import traceback
 import argparse
 from datetime import datetime
 import time
+
+# Default model - Google Gemini 2.5 Flash Lite
+DEFAULT_MODEL = "gemini-2.5-flash-lite-preview-09-2025"
 
 def run():
     if not os.path.exists(args.log_dir):
@@ -164,9 +166,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        help="The model to use for the agent",
-        default="o1-mini",
-        choices = ["o1-mini", "gpt-4o", "gpt-4-turbo"].extend(BEDROCK_MODELS_MAP.keys()),
+        help="The model to use for the agent (always uses Google Gemini 2.5 Flash Lite)",
+        default=DEFAULT_MODEL,
     )
     parser.add_argument(
         "--agent_strategy",
@@ -183,8 +184,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--llm_provider",
         type=str,
-        default="bedrock",
-        choices=["bedrock", "together_ai", "openai", "vertex_ai"]
+        default="openai",
+        help="Provider is always openai (for Google Gemini via OpenAI API)"
     )
     parser.add_argument(
         "--task_category",

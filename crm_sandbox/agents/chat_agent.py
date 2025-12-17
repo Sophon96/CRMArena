@@ -1,21 +1,25 @@
 import os
-from litellm import completion
-import litellm
-litellm.set_verbose = False
+from openai import OpenAI
 from typing import Dict, List
 import time, traceback
 from crm_sandbox.agents.prompts import SCHEMA_STRING, REACT_RULE_STRING, SYSTEM_METADATA, REACT_EXTERNAL_INTERACTIVE_PROMPT, REACT_INTERNAL_INTERACTIVE_PROMPT, REACT_INTERNAL_PROMPT, REACT_EXTERNAL_PROMPT, REACT_PRIVACY_AWARE_EXTERNAL_PROMPT, REACT_PRIVACY_AWARE_EXTERNAL_INTERACTIVE_PROMPT, ACT_PROMPT
-from crm_sandbox.agents.utils import parse_wrapped_response, BEDROCK_MODELS_MAP, TOGETHER_MODELS_MAP, VERTEX_MODELS_MAP
-import together
+from crm_sandbox.agents.utils import parse_wrapped_response
 
-
-
+# Default model to use
+DEFAULT_MODEL = "gemini-2.5-flash-lite-preview-09-2025"
 
 
 class ChatAgent:
     def __init__(
-        self, schema_obj, model: str = "gpt-4o", max_turns: int = 20, eval_mode="default", strategy="react", provider="bedrock", interactive=False, agent_type="internal", privacy_aware_prompt=False
+        self, schema_obj, model: str = DEFAULT_MODEL, max_turns: int = 20, eval_mode="default", strategy="react", provider="openai", interactive=False, agent_type="internal", privacy_aware_prompt=False
     ):
+        # Initialize OpenAI client for Google Gemini via OpenAI API
+        # This is done here so that .env is loaded before the client is created
+        self.client = OpenAI(
+            api_key=os.environ.get("GOOGLE_API_KEY"),
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        
         schema = self._build_schema(schema_obj)
         assert strategy in ["react", "act"], "Only react and act strategies supported for now"
         assert agent_type in ["internal", "external"], "Invalid agent type"
@@ -52,23 +56,10 @@ class ChatAgent:
         self.usage = {"cost": [], "completion_tokens": [], "prompt_tokens": [], "total_tokens": []}
         self.provider = provider
        
-        if provider == "bedrock" and self.model in BEDROCK_MODELS_MAP:
-            os.environ["AWS_REGION_NAME"] = BEDROCK_MODELS_MAP[self.model]["region"]
-            self.model = BEDROCK_MODELS_MAP[self.model]["name"]
-        elif provider == "together_ai" and self.model in TOGETHER_MODELS_MAP:
-            self.model = TOGETHER_MODELS_MAP[self.model]["name"]
-        elif "vertex" in provider and self.model in VERTEX_MODELS_MAP:
-            self.model = VERTEX_MODELS_MAP[self.model]["name"]
+        # All models now use Google Gemini 2.5 Flash Lite
+        self.model = DEFAULT_MODEL
             
-        else:
-            pass
-        if self.model in ["o1-mini", "o1-preview", "o1-2024-12-17", "o3-mini-2025-01-31"]:
-            import litellm
-            
-            litellm.drop_params=True
-            print("dropping parameters")
-            
-            # assert self.model in ["o1-mini", "o1-preview", "gpt-4o-2024-08-06", "gpt-3.5-turbo-0125"], "Invalid model name"
+        # assert self.model in ["o1-mini", "o1-preview", "gpt-4o-2024-08-06", "gpt-3.5-turbo-0125"], "Invalid model name"
     
     def _build_schema(self, schema_obj):
         object_description = dict()
@@ -88,13 +79,11 @@ class ChatAgent:
             self.sys_prompt += SYSTEM_METADATA.format(system_metadata=args["metadata"]["required"], system="Salesforce instance") # add task/query-specific metadata here
         if self.eval_mode == "aided" and "optional" in args["metadata"]:
             self.sys_prompt += "\n" + args["metadata"]["optional"]
-        if self.original_model_name not in ["o1-mini", "o1-preview", "o1-2024-12-17", "deepseek-r1", "o3-mini-2025-01-31", "gemini-2.5-flash-preview-04-17"]:
-            self.messages = [{"role": "system", "content": self.sys_prompt.strip()}]
-            self.messages.append({"role": "user", "content": args["query"].strip()})
         
-        else:
-            # No system role for o1-mini and o1-preview
-            self.messages = [{"role": "user", "content": self.sys_prompt + "\n\n" + args["query"]}]
+        # Google Gemini uses standard message format
+        self.messages = [{"role": "system", "content": self.sys_prompt.strip()}]
+        self.messages.append({"role": "user", "content": args["query"].strip()})
+        
         self.usage = {"cost": [], "completion_tokens": [], "prompt_tokens": [], "total_tokens": []}
         
     def act(self, env, index=None, temperature=0.0):
@@ -111,44 +100,39 @@ class ChatAgent:
         current_agent_turn = 0
         # for turn_id in range(self.max_turns):
         while current_agent_turn < self.max_turns:
-            # sleep for non-openai models
-            if self.provider != "openai":
-                time.sleep(5)
+            # Sleep for rate limiting
+            time.sleep(1)
             info = {}
             current_agent_turn += 1
-            # turn off thinking for gemini 2.5 flash
-            if self.original_model_name == "gemini-2.5-flash-preview-04-17":
-                thinking = {"type": "disabled", "budget_tokens": 0}
-            elif self.original_model_name == "gemini-2.5-flash-preview-04-17-thinking-4096":
-                thinking = {"type": "enabled", "budget_tokens": 4096}
-            else:
-                thinking = None
             
-            res = completion(
-                messages=self.messages,
+            # Use OpenAI SDK to call Google Gemini
+            res = self.client.chat.completions.create(
                 model=self.model,
+                messages=self.messages,
                 temperature=0.0,
-                max_tokens=2000 if self.original_model_name not in ["o1-mini", "o1-preview", "o1-2024-12-17", "deepseek-r1", "o3-mini-2025-01-31", "gemini-2.5-flash-preview-04-17", "gemini-2.5-flash-preview-04-17-thinking-4096", "gemini-2.5-pro-preview-03-25"] else 50000,
-                top_p=1.0 if self.model not in ["o3-mini-2025-01-31"] else None,
-                thinking= thinking,  
-                # custom_llm_provider=self.provider,
-                additional_drop_params=["temperature"] if self.original_model_name in ["o1-mini", "o1-preview", "o1-2024-12-17", "deepseek-r1", "o3-mini-2025-01-31"] else []
+                max_tokens=2000,
+                top_p=1.0
             )
 
             
-            
-            message = res.choices[0].message.model_dump()
+            message = {
+                "role": res.choices[0].message.role,
+                "content": res.choices[0].message.content or ""
+            }
             
             
             usage = res.usage
 
             for key in self.usage.keys():
                 if key != "cost":
-                    self.usage[key].append(usage.get(key, 0))
+                    if hasattr(usage, key):
+                        self.usage[key].append(getattr(usage, key, 0))
 
-            self.usage["cost"].append(res._hidden_params["response_cost"])
+            # Google Gemini API via OpenAI doesn't provide cost, set to 0
+            self.usage["cost"].append(0)
+            
             action = self.message_action_parser(message, self.model)
-            print("User Turn:", env.current_user_turn, "Agent Turn:", current_agent_turn, "Agent:", message["content"].strip())
+            print("User Turn:", env.current_user_turn if hasattr(env, 'current_user_turn') else 0, "Agent Turn:", current_agent_turn, "Agent:", message["content"].strip())
             self.messages.append({"role": "assistant", "content": message["content"].strip()})
             if action is None:
                 self.info["end_reason"] = {
@@ -160,6 +144,7 @@ class ChatAgent:
                 if self.strategy == "react":
                     self.messages.append({"role": "user", "content": REACT_RULE_STRING})
                 elif self.strategy == "act":
+                    from crm_sandbox.agents.prompts import ACT_RULE_STRING
                     self.messages.append({"role": "user", "content": ACT_RULE_STRING})
                 continue
             obs, reward, done, info = env.step(action)
@@ -188,14 +173,14 @@ class ChatAgent:
                 }
         self.info["usage"] = self.usage
         self.info["total_cost"] = sum(cost for cost in self.usage["cost"] if cost is not None)
-        self.info["num_turns"] = (env.current_user_turn, current_agent_turn + 1)
+        self.info["num_turns"] = (env.current_user_turn if hasattr(env, 'current_user_turn') else 0, current_agent_turn + 1)
         return reward
 
     def get_messages(self) -> List[Dict[str, str]]:
         return self.messages
 
     @staticmethod
-    def message_action_parser(message: str, model_name: str) -> Dict[str, str]:
+    def message_action_parser(message: Dict[str, str], model_name: str) -> Dict[str, str]:
         action = None
         content = message["content"].strip()
         # if model_name "deepseek-r1":

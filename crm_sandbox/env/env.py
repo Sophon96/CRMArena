@@ -4,8 +4,10 @@ from crm_sandbox.env.connect_sandbox import SalesforceConnector
 from crm_sandbox.env.users import LLMUserSimulationEnv
 from concurrent.futures import ThreadPoolExecutor
 from crm_sandbox.agents.utils import get_all_metrics
-import litellm
+from openai import OpenAI
 import json
+import os
+import re
 
 class ChatEnv(object):
     def __init__(
@@ -272,6 +274,12 @@ class Evaluator(object):
         self.provider = provider
         self.total_cost = 0.0
         
+        # Initialize OpenAI client for Google Gemini via OpenAI API
+        self.client = OpenAI(
+            api_key=os.environ.get("GOOGLE_API_KEY"),
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        
         
         self.base_system_prompt_template = """
                 You are an evaluator that extracts specific information from text responses from an AI agent.
@@ -413,8 +421,9 @@ class Evaluator(object):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": model_output}
         ]
-        res = litellm.completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+        res = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
         )
         extracted_answers = res.choices[0].message
         try:
@@ -513,11 +522,13 @@ class Evaluator(object):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": model_output}
         ]
-        res = litellm.completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+        res = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
         )
         
-        if "yes" in res.choices[0].message.content.strip().lower() :
+        content = res.choices[0].message.content or ""
+        if "yes" in content.strip().lower():
             return 1
         else:
             return 0
